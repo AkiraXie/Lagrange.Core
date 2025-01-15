@@ -11,7 +11,7 @@ namespace Lagrange.Core.Internal.Context;
 /// <summary>
 /// <para>Translate the protocol event into SSOPacket and further ServiceMessage</para>
 /// <para>And Dispatch the packet from <see cref="SocketContext"/> by managing the sequence from Tencent's server</para>
-/// <para>Every Packet should be send and received from this context instead of being directly send to <see cref="SocketContext"/></para>
+/// <para>Every Packet should be sent and received from this context instead of being directly send to <see cref="SocketContext"/></para>
 /// </summary>
 internal class PacketContext : ContextBase
 {
@@ -90,7 +90,21 @@ internal class PacketContext : ContextBase
 
         var sso = SsoPacker.Parse(service);
         
-        if (_pendingTasks.TryRemove(sso.Sequence, out var task)) task.SetResult(sso);
-        else Collection.Business.HandleServerPacket(sso);
+        if (_pendingTasks.TryRemove(sso.Sequence, out var task))
+        {
+            if (sso is { RetCode: not 0, Extra: { } extra})
+            {
+                string msg = $"Packet '{sso.Command}' returns {sso.RetCode} with seq: {sso.Sequence}, extra: {extra}";
+                task.SetException(new InvalidOperationException(msg));
+            }
+            else
+            {
+                task.SetResult(sso);
+            }
+        }
+        else
+        {
+            Collection.Business.HandleServerPacket(sso);
+        }
     }
 }

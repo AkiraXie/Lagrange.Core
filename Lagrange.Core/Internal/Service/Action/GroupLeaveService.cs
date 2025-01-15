@@ -3,7 +3,6 @@ using Lagrange.Core.Internal.Event;
 using Lagrange.Core.Internal.Event.Action;
 using Lagrange.Core.Internal.Packets.Service.Oidb;
 using Lagrange.Core.Internal.Packets.Service.Oidb.Request;
-using Lagrange.Core.Utility.Binary;
 using Lagrange.Core.Utility.Extension;
 using ProtoBuf;
 
@@ -14,7 +13,7 @@ namespace Lagrange.Core.Internal.Service.Action;
 internal class GroupLeaveService : BaseService<GroupLeaveEvent>
 {
     protected override bool Build(GroupLeaveEvent input, BotKeystore keystore, BotAppInfo appInfo, BotDeviceInfo device,
-        out BinaryPacket output, out List<BinaryPacket>? extraPackets)
+        out Span<byte> output, out List<Memory<byte>>? extraPackets)
     {
         var packet = new OidbSvcTrpcTcpBase<OidbSvcTrpcTcp0x1097_1>(new OidbSvcTrpcTcp0x1097_1
         {
@@ -26,10 +25,10 @@ internal class GroupLeaveService : BaseService<GroupLeaveEvent>
         return true;
     }
 
-    protected override bool Parse(byte[] input, BotKeystore keystore, BotAppInfo appInfo, BotDeviceInfo device, 
+    protected override bool Parse(Span<byte> input, BotKeystore keystore, BotAppInfo appInfo, BotDeviceInfo device, 
         out GroupLeaveEvent output, out List<ProtocolEvent>? extraEvents)
     {
-        var payload = Serializer.Deserialize<OidbSvcTrpcTcpResponse<byte[]>>(input.AsSpan());
+        var payload = Serializer.Deserialize<OidbSvcTrpcTcpBase<byte[]>>(input);
         
         output = GroupLeaveEvent.Result((int)payload.ErrorCode);
         extraEvents = null;

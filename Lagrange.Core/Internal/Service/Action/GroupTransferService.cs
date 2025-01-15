@@ -3,7 +3,6 @@ using Lagrange.Core.Internal.Event;
 using Lagrange.Core.Internal.Event.Action;
 using Lagrange.Core.Internal.Packets.Service.Oidb;
 using Lagrange.Core.Internal.Packets.Service.Oidb.Request;
-using Lagrange.Core.Utility.Binary;
 using Lagrange.Core.Utility.Extension;
 using ProtoBuf;
 
@@ -13,10 +12,10 @@ namespace Lagrange.Core.Internal.Service.Action;
 [Service("OidbSvcTrpcTcp.0x89e_0")]
 internal class GroupTransferService : BaseService<GroupTransferEvent>
 {
-    protected override bool Build(GroupTransferEvent input, BotKeystore keystore, BotAppInfo appInfo, BotDeviceInfo device,
-        out BinaryPacket output, out List<BinaryPacket>? extraPackets)
+    protected override bool Build(GroupTransferEvent input, BotKeystore keystore, BotAppInfo appInfo,
+        BotDeviceInfo device, out Span<byte> output, out List<Memory<byte>>? extraPackets)
     {
-        var packet = new OidbSvcTrpcTcpBase<OidvSvcTrpcTcp0x89E_0>(new OidvSvcTrpcTcp0x89E_0
+        var packet = new OidbSvcTrpcTcpBase<OidbSvcTrpcTcp0x89E_0>(new OidbSvcTrpcTcp0x89E_0
         {
             GroupUin = input.GroupUin,
             SourceUid = input.SourceUid,
@@ -28,10 +27,10 @@ internal class GroupTransferService : BaseService<GroupTransferEvent>
         return true;
     }
 
-    protected override bool Parse(byte[] input, BotKeystore keystore, BotAppInfo appInfo, BotDeviceInfo device, out GroupTransferEvent output,
-        out List<ProtocolEvent>? extraEvents)
+    protected override bool Parse(Span<byte> input, BotKeystore keystore, BotAppInfo appInfo, BotDeviceInfo device, 
+        out GroupTransferEvent output, out List<ProtocolEvent>? extraEvents)
     {
-        var payload = Serializer.Deserialize<OidbSvcTrpcTcpResponse<byte[]>>(input.AsSpan());
+        var payload = Serializer.Deserialize<OidbSvcTrpcTcpBase<byte[]>>(input);
         
         output = GroupTransferEvent.Result((int)payload.ErrorCode);
         extraEvents = null;

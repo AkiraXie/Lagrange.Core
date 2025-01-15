@@ -3,7 +3,6 @@ using Lagrange.Core.Internal.Event;
 using Lagrange.Core.Internal.Event.Action;
 using Lagrange.Core.Internal.Packets.Service.Oidb;
 using Lagrange.Core.Internal.Packets.Service.Oidb.Request;
-using Lagrange.Core.Utility.Binary;
 using Lagrange.Core.Utility.Extension;
 using ProtoBuf;
 
@@ -14,13 +13,13 @@ namespace Lagrange.Core.Internal.Service.Action;
 internal class FriendLikeService : BaseService<FriendLikeEvent>
 {
     protected override bool Build(FriendLikeEvent input, BotKeystore keystore, BotAppInfo appInfo, BotDeviceInfo device,
-        out BinaryPacket output, out List<BinaryPacket>? extraPackets)
+        out Span<byte> output, out List<Memory<byte>>? extraPackets)
     {
         var packet = new OidbSvcTrpcTcpBase<OidbSvcTrpcTcp0x7E5_104>(new OidbSvcTrpcTcp0x7E5_104
         {
             TargetUid = input.TargetUid,
             Field2 = 71,
-            Field3 = 1
+            Field3 = input.Count
         });
         output = packet.Serialize();
         
@@ -28,10 +27,10 @@ internal class FriendLikeService : BaseService<FriendLikeEvent>
         return true;
     }
 
-    protected override bool Parse(byte[] input, BotKeystore keystore, BotAppInfo appInfo, BotDeviceInfo device, out FriendLikeEvent output,
-        out List<ProtocolEvent>? extraEvents)
+    protected override bool Parse(Span<byte> input, BotKeystore keystore, BotAppInfo appInfo, BotDeviceInfo device, 
+        out FriendLikeEvent output, out List<ProtocolEvent>? extraEvents)
     {
-        var payload = Serializer.Deserialize<OidbSvcTrpcTcpResponse<byte[]>>(input.AsSpan());
+        var payload = Serializer.Deserialize<OidbSvcTrpcTcpBase<byte[]>>(input);
         output = FriendLikeEvent.Result((int)payload.ErrorCode);
 
         extraEvents = null;

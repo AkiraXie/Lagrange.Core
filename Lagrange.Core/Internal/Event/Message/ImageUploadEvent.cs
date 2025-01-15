@@ -1,42 +1,34 @@
-using Lagrange.Core.Utility.Extension;
+using Lagrange.Core.Internal.Packets.Message.Element.Implementation;
+using Lagrange.Core.Internal.Packets.Service.Oidb.Common;
+using Lagrange.Core.Message.Entity;
 
 #pragma warning disable CS8618
 
 namespace Lagrange.Core.Internal.Event.Message;
 
-internal class ImageUploadEvent : ProtocolEvent
+internal class ImageUploadEvent : NTV2RichMediaUploadEvent
 {
-    public Stream Stream { get; }
+    public ImageEntity Entity { get; }
     
-    public string TargetUid { get; }
+    public string TargetUid { get; set; }
     
-    public uint FileSize { get; }
-    
-    public string FileMd5 { get; }
-    
-    public string Ticket { get; }
-    
-    public bool IsExist { get; }
-    
-    public string ServerPath { get; }
-    
-    private ImageUploadEvent(Stream stream, string targetUid) : base(true)
+    public NotOnlineImage Compat { get; }
+
+    private ImageUploadEvent(ImageEntity entity, string targetUid)
     {
-        Stream = stream;
+        Entity = entity;
         TargetUid = targetUid;
-        FileSize = (uint)stream.Length;
-        FileMd5 = stream.Md5(true);
     }
-    
-    private ImageUploadEvent(int resultCode, string ticket, bool isExist, string serverPath) : base(resultCode)
+
+    private ImageUploadEvent(int resultCode, MsgInfo msgInfo, string? uKey, List<IPv4> network, List<SubFileInfo> subFiles, NotOnlineImage compat) 
+        : base(resultCode, msgInfo, uKey, network, subFiles)
     {
-        IsExist = isExist;
-        Ticket = ticket;
-        ServerPath = serverPath;
+        Compat = compat;
     }
     
-    public static ImageUploadEvent Create(Stream stream, string targetUid) => new(stream, targetUid);
-    
-    public static ImageUploadEvent Result(int resultCode, string ticket, bool isExist, string imagePath) 
-        => new(resultCode, ticket, isExist, imagePath);
+    public static ImageUploadEvent Create(ImageEntity entity, string targetUid)
+        => new(entity, targetUid);
+
+    public static ImageUploadEvent Result(int resultCode, MsgInfo msgInfo, string? uKey, List<IPv4> network, List<SubFileInfo> subFiles, NotOnlineImage compat)
+        => new(resultCode, msgInfo, uKey, network, subFiles, compat);
 }

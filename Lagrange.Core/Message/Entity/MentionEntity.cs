@@ -37,9 +37,9 @@ public class MentionEntity : IMessageEntity
         var reserve = new MentionExtra
         {
             Type = Uin == 0 ? 1 : 2,
-            Field4 = 0,
+            Uin = 0,
             Field5 = 0,
-            Uid = Uid,
+            Uid = Uid, // Must be a legal value
         };
         using var stream = new MemoryStream();
         Serializer.Serialize(stream, reserve);
@@ -59,10 +59,16 @@ public class MentionEntity : IMessageEntity
     
     IMessageEntity? IMessageEntity.UnpackElement(Elem elems)
     {
-        if (elems.Text is { Str: not null, Attr6Buf: not null } text) return text.Attr6Buf[7..11] is { } uin
-            ? new MentionEntity(text.Str) { Uin = BitConverter.ToUInt32(uin, false) }
-            : null;
-        
+        if (elems.Text is { Str: not null, Attr6Buf: { Length: >= 11 } attr })
+        {
+            return new MentionEntity
+            {
+                Name = elems.Text.Str,
+                Uin = BitConverter.ToUInt32(attr.AsSpan()[7..11], false),
+                Uid = ""
+            };
+        }
+
         return null;
     }
 
@@ -70,4 +76,6 @@ public class MentionEntity : IMessageEntity
     {
         return $"[Mention]: {Name}({Uin})";
     }
+
+    public string ToPreviewText() => $"{Name} ";
 }

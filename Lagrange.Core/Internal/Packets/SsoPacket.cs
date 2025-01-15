@@ -1,8 +1,6 @@
-using Lagrange.Core.Utility.Binary;
-
 namespace Lagrange.Core.Internal.Packets;
 
-internal class SsoPacket : IDisposable
+internal class SsoPacket
 {
     public byte PacketType { get; set; }
     
@@ -10,9 +8,13 @@ internal class SsoPacket : IDisposable
     
     public uint Sequence { get; }
     
-    public BinaryPacket Payload { get; }
+    public byte[] Payload { get; }
     
-    public SsoPacket(byte packetType, string command, uint sequence, BinaryPacket payload)
+    public int RetCode { get; }
+    
+    public string? Extra { get; }
+    
+    public SsoPacket(byte packetType, string command, uint sequence, byte[] payload)
     {
         PacketType = packetType;
         Command = command;
@@ -20,5 +22,13 @@ internal class SsoPacket : IDisposable
         Payload = payload;
     }
 
-    public void Dispose() => Payload.Dispose();
+    public SsoPacket(byte packetType, string command, uint sequence, int retCode, string extra)
+    {
+        PacketType = packetType;
+        Command = command;
+        Sequence = sequence;
+        RetCode = retCode;
+        Payload = Array.Empty<byte>();
+        Extra = extra;
+    }
 }

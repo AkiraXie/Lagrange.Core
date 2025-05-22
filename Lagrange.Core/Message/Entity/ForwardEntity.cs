@@ -1,5 +1,10 @@
+using Lagrange.Core.Internal.Packets.Message;
+using Lagrange.Core.Internal.Packets.Message.Component;
 using Lagrange.Core.Internal.Packets.Message.Element;
 using Lagrange.Core.Internal.Packets.Message.Element.Implementation;
+using Lagrange.Core.Internal.Packets.Message.Element.Implementation.Extra;
+using Lagrange.Core.Internal.Packets.Message.Routing;
+using Lagrange.Core.Utility.Extension;
 using ProtoBuf;
 
 namespace Lagrange.Core.Message.Entity;
@@ -7,74 +12,107 @@ namespace Lagrange.Core.Message.Entity;
 [MessageElement(typeof(SrcMsg))]
 public class ForwardEntity : IMessageEntity
 {
-    public uint Sequence { get; internal set; }
-    
-    public string? Uid { get; internal set; }
+    public DateTime Time { get => Chain.Time; }
 
-    public uint TargetUin { get; internal set; }
+    public ulong MessageId { get => Chain.MessageId; }
 
-    private List<Elem> Elements { get; }
+    public uint Sequence { get => Chain.Sequence; }
 
-    private string? SelfUin { get; set; }
-    
+    public uint ClientSequence { get => Chain.ClientSequence; }
+
+    public string? Uid { get => Chain.Uid; set => Chain.Uid = value; }
+
+    public uint TargetUin { get => Chain.FriendUin; }
+
+    private string _selfUid = string.Empty;
+
+    public MessageChain Chain { get; internal set; }
+
     public ForwardEntity()
     {
-        Sequence = 0;
-        Uid = null;
-        Elements = new List<Elem>();
+        Chain = MessageBuilder.Friend(0).Build();
     }
 
     public ForwardEntity(MessageChain chain)
     {
-        Sequence = chain.Sequence;
-        Uid = chain.Uid;
-        Elements = chain.Elements;
+        Chain = chain;
     }
-    
-    IEnumerable<Elem> IMessageEntity.PackElement()
+
+    IEnumerable<Elem> IMessageEntity.PackElement() => PackElement(false);
+
+    IEnumerable<Elem> IMessageEntity.PackFakeElement() => PackElement(true);
+
+    IEnumerable<Elem> PackElement(bool fake)
     {
-        var reserve = new SrcMsg.Preserve
-        {
-            Field3 = Random.Shared.Next(0, int.MaxValue),
-            ReceiverUid = Uid,
-            SenderUid = SelfUin,
-            Field8 = Random.Shared.Next(0, 10000)
-        };
-        using var stream = new MemoryStream();
-        Serializer.Serialize(stream, reserve);
-        
-        return new Elem[]
-        {
-            new()
-            {
-                SrcMsg = new SrcMsg
-                {
-                    OrigSeqs = new List<uint> { Sequence },
-                    SenderUin = 0,
-                    Time = (int)DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
-                    Elems = Elements,
-                    PbReserve = stream.ToArray(),
+        var result = new List<Elem> {
+            new() {
+                SrcMsg = new SrcMsg {
+                    OrigSeqs = new List<uint> { ClientSequence != 0 ? ClientSequence : Sequence },
+                    SenderUin = TargetUin,
+                    Time = (int?)new DateTimeOffset(Time).ToUnixTimeSeconds(),
+                    Elems = Chain.Elements,
+                    PbReserve = ProtoExt.SerializeToBytes(new SrcMsg.Preserve
+                    {
+                        MessageId = MessageId,
+                        SenderUid = Uid,
+                    }),
+                    SourceMsg = fake ? ProtoExt.SerializeToBytes(MessagePacker.BuildFake(Chain, _selfUid)) : null,
                     ToUin = 0
                 }
-            }
+            },
         };
-    }
-    
-    IMessageEntity? IMessageEntity.UnpackElement(Elem elems)
-    {
-        if (elems.SrcMsg is { } srcMsg)
+
+        if (!fake && ClientSequence == 0)
         {
-            return new ForwardEntity
+            result.Add(new Elem
             {
-                Sequence = srcMsg.OrigSeqs?[0] ?? 0,
-                TargetUin = (uint)srcMsg.SenderUin,
-            };
+                Text = new Text
+                {
+                    Str = "not null",
+                    PbReserve = ProtoExt.SerializeToBytes(new MentionExtra
+                    {
+                        Type = 2,
+                        Uid = Chain.Uid!,
+                    })
+                }
+            });
         }
 
-        return null;
+        return result;
     }
 
-    public void SetSelfUid(string selfUid) => SelfUin = selfUid;
+    IMessageEntity? IMessageEntity.UnpackElement(Elem elem)
+    {
+        if (elem.SrcMsg is not { } src) return null;
 
-    public string ToPreviewString() => $"[Forward]: Sequence: {Sequence}";
+        var reserve = Serializer.Deserialize<SrcMsg.Preserve>(src.PbReserve.AsSpan());
+        return new ForwardEntity(MessagePacker.Parse(new PushMsgBody
+        {
+            ResponseHead = new ResponseHead
+            {
+                FromUin = (uint)src.SenderUin,
+                FromUid = reserve.SenderUid,
+                Grp = reserve.ReceiverUid != null ? null : new ResponseGrp { }
+            },
+            ContentHead = new ContentHead
+            {
+                Random = (long?)(reserve.MessageId & 0xFFFFFFFF),
+                Sequence = src.OrigSeqs?.Count > 0 ? src.OrigSeqs[0] : 0,
+                Timestamp = src.Time,
+            },
+            Body = new MessageBody
+            {
+                RichText = new RichText
+                {
+                    Elems = src.Elems ?? new List<Elem>(),
+                }
+            }
+        }, true));
+    }
+
+    void IMessageEntity.SetSelfUid(string selfUid) => _selfUid = selfUid;
+
+    string IMessageEntity.ToPreviewString() => $"[Forward] {{ {Chain.Sequence} }}";
+
+    string IMessageEntity.ToPreviewText() => "";
 }

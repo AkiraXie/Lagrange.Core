@@ -2,13 +2,12 @@ using Lagrange.Core.Common;
 using Lagrange.Core.Internal.Packets.System;
 using Lagrange.Core.Utility.Binary;
 using ProtoBuf;
-using static Lagrange.Core.Utility.Binary.BinaryPacket;
 
 namespace Lagrange.Core.Internal.Packets;
 
 internal static class ServicePacker
 {
-    public static BinaryPacket BuildProtocol13(BinaryPacket packet, BotKeystore keystore, string command, uint sequence)
+    public static BinaryPacket BuildProtocol13(byte[] packet, BotKeystore keystore, string command, uint sequence)
     {
         var frame = new BinaryPacket();
         
@@ -17,17 +16,17 @@ internal static class ServicePacker
         Serializer.Serialize(stream, uid);
         var uidBytes = keystore.Uid == null ? Array.Empty<byte>() : stream.ToArray();
 
-        frame.Barrier(typeof(uint), () => new BinaryPacket()
-            .WriteUint(13, false)
+        frame.Barrier(w => w
+            .WriteUint(13)
             .WriteByte(0) // flag
-            .WriteUint(sequence, false)
+            .WriteUint(sequence)
             .WriteByte(0)
             .WriteString("0", Prefix.Uint32 | Prefix.WithPrefix)
-            .Barrier(typeof(uint), () => new BinaryPacket()
+            .Barrier(w => w
                 .WriteString(command, Prefix.Uint32 | Prefix.WithPrefix)
                 .WriteBytes(Array.Empty<byte>(), Prefix.Uint32 | Prefix.WithPrefix) // TODO: Unknown
-                .WriteBytes(uidBytes,Prefix.Uint32 | Prefix.WithPrefix), false, true)
-            .WriteBytes(packet.ToArray(), Prefix.Uint32 | Prefix.WithPrefix), false, true);
+                .WriteBytes(uidBytes, Prefix.Uint32 | Prefix.WithPrefix), Prefix.Uint32 | Prefix.WithPrefix)
+            .WriteBytes(packet.ToArray(), Prefix.Uint32 | Prefix.WithPrefix), Prefix.Uint32 | Prefix.WithPrefix);
 
         return frame;
     }
@@ -39,13 +38,13 @@ internal static class ServicePacker
     {
         var frame = new BinaryPacket();
         
-        frame.Barrier(typeof(uint), () => new BinaryPacket()
-            .WriteUint(12, false) // protocolVersion
+        frame.Barrier(w => w
+            .WriteUint(12) // protocolVersion
             .WriteByte((byte)(keystore.Session.D2.Length == 0 ? 2 : 1)) // flag
             .WriteBytes(keystore.Session.D2, Prefix.Uint32 | Prefix.WithPrefix)
             .WriteByte(0) // unknown
             .WriteString(keystore.Uin.ToString(), Prefix.Uint32 | Prefix.WithPrefix) // 帅
-            .WriteBytes(keystore.TeaImpl.Encrypt(packet.ToArray(), keystore.Session.D2Key).AsSpan()), false, true);
+            .WriteBytes(keystore.TeaImpl.Encrypt(packet.ToArray(), keystore.Session.D2Key).AsSpan()), Prefix.Uint32 | Prefix.WithPrefix);
         
         return frame;
     }
@@ -55,8 +54,8 @@ internal static class ServicePacker
     /// </summary>
     public static BinaryPacket Parse(BinaryPacket packet, BotKeystore keystore)
     {
-        uint length = packet.ReadUint(false);
-        uint protocol = packet.ReadUint(false);
+        uint length = packet.ReadUint();
+        uint protocol = packet.ReadUint();
         byte authFlag = packet.ReadByte();
         byte flag = packet.ReadByte();
         string uin = packet.ReadString(Prefix.Uint32 | Prefix.WithPrefix);
@@ -65,9 +64,13 @@ internal static class ServicePacker
         if (uin != keystore.Uin.ToString() && protocol == 12) throw new Exception($"Uin mismatch: {uin} != {keystore.Uin}");
         
         var encrypted = packet.ReadBytes((int)packet.Remaining);
-        var decrypted = authFlag == 0 
-            ? encrypted
-            : keystore.TeaImpl.Decrypt(encrypted, keystore.Session.D2Key);
+        var decrypted = authFlag switch
+        {
+            0 => encrypted,
+            1 => keystore.TeaImpl.Decrypt(encrypted, keystore.Session.D2Key),
+            2 => keystore.TeaImpl.Decrypt(encrypted, new byte[16]),
+            _ => throw new Exception($"Unrecognized auth flag: {authFlag}")
+        };
         
         return new BinaryPacket(decrypted);
     }

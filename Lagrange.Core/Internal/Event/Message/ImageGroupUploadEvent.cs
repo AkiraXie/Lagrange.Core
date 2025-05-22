@@ -1,42 +1,34 @@
-using Lagrange.Core.Utility.Extension;
+using Lagrange.Core.Internal.Packets.Message.Element.Implementation;
+using Lagrange.Core.Internal.Packets.Service.Oidb.Common;
+using Lagrange.Core.Message.Entity;
 
 #pragma warning disable CS8618
 
 namespace Lagrange.Core.Internal.Event.Message;
 
-internal class ImageGroupUploadEvent : ProtocolEvent
+internal class ImageGroupUploadEvent : NTV2RichMediaUploadEvent
 {
-    public Stream Stream { get; }
+    public ImageEntity Entity { get; }
     
-    public uint TargetGroupUin { get; }
+    public uint GroupUin { get; }
     
-    public uint FileSize { get; }
-    
-    public string FileMd5 { get; }
-    
-    public string Ticket { get; }
-    
-    public bool IsExist { get; }
-    
-    public uint FileId { get; }
-    
-    private ImageGroupUploadEvent(Stream stream, uint targetGroupUin) : base(true)
+    public CustomFace Compat { get; }
+
+    private ImageGroupUploadEvent(ImageEntity entity, uint groupUin)
     {
-        Stream = stream;
-        TargetGroupUin = targetGroupUin;
-        FileSize = (uint)stream.Length;
-        FileMd5 = stream.Md5(true);
+        Entity = entity;
+        GroupUin = groupUin;
     }
-    
-    private ImageGroupUploadEvent(int resultCode, string ticket, bool isExist, uint fileId) : base(resultCode)
+
+    private ImageGroupUploadEvent(int resultCode, MsgInfo msgInfo, string? uKey, List<IPv4> network, List<SubFileInfo> subFiles, CustomFace compat) 
+        : base(resultCode, msgInfo, uKey, network, subFiles)
     {
-        IsExist = isExist;
-        Ticket = ticket;
-        FileId = fileId;
+        Compat = compat;
     }
-    
-    public static ImageGroupUploadEvent Create(Stream stream, uint targetGroupUin) => new(stream, targetGroupUin);
-    
-    public static ImageGroupUploadEvent Result(int resultCode, string ticket, bool isExist, uint fileId) 
-        => new(resultCode, ticket, isExist, fileId);
+
+    public static ImageGroupUploadEvent Create(ImageEntity entity, uint groupUin)
+        => new(entity, groupUin);
+
+    public static ImageGroupUploadEvent Result(int resultCode, MsgInfo msgInfo, string? uKey, List<IPv4> network, List<SubFileInfo> subFiles, CustomFace compat)
+        => new(resultCode, msgInfo, uKey, network, subFiles, compat);
 }

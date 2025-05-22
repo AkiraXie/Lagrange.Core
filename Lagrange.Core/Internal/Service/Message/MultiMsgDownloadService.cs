@@ -3,7 +3,6 @@ using Lagrange.Core.Internal.Event;
 using Lagrange.Core.Internal.Event.Message;
 using Lagrange.Core.Internal.Packets.Message.Action;
 using Lagrange.Core.Message;
-using Lagrange.Core.Utility.Binary;
 using Lagrange.Core.Utility.Binary.Compression;
 using Lagrange.Core.Utility.Extension;
 using ProtoBuf;
@@ -14,8 +13,8 @@ namespace Lagrange.Core.Internal.Service.Message;
 [Service("trpc.group.long_msg_interface.MsgService.SsoRecvLongMsg")]
 internal class MultiMsgDownloadService : BaseService<MultiMsgDownloadEvent>
 {
-    protected override bool Build(MultiMsgDownloadEvent input, BotKeystore keystore, BotAppInfo appInfo, BotDeviceInfo device, 
-        out BinaryPacket output, out List<BinaryPacket>? extraPackets)
+    protected override bool Build(MultiMsgDownloadEvent input, BotKeystore keystore, BotAppInfo appInfo,
+        BotDeviceInfo device, out Span<byte> output, out List<Memory<byte>>? extraPackets)
     {
         var packet = new RecvLongMsgReq
         {
@@ -33,20 +32,22 @@ internal class MultiMsgDownloadService : BaseService<MultiMsgDownloadEvent>
                 Field4 = 0
             }
         };
-        
+
         output = packet.Serialize();
         extraPackets = null;
         return true;
     }
 
-    protected override bool Parse(byte[] input, BotKeystore keystore, BotAppInfo appInfo, BotDeviceInfo device,
+    protected override bool Parse(Span<byte> input, BotKeystore keystore, BotAppInfo appInfo, BotDeviceInfo device,
         out MultiMsgDownloadEvent output, out List<ProtocolEvent>? extraEvents)
     {
-        var packet = Serializer.Deserialize<RecvLongMsgResp>(input.AsSpan());
+        var packet = Serializer.Deserialize<RecvLongMsgResp>(input);
         var inflate = GZip.Inflate(packet.Result.Payload);
         var result = Serializer.Deserialize<LongMsgResult>(inflate.AsSpan());
 
-        output = MultiMsgDownloadEvent.Result(0, result.Action.ActionData.MsgBody.Select(MessagePacker.Parse).ToList());
+        var main = result.Action.First(a => a.ActionCommand == "MultiMsg");
+        var chains = main.ActionData.MsgBody.Select(x => MessagePacker.Parse(x, true)).ToList();
+        output = MultiMsgDownloadEvent.Result(0, chains);
         extraEvents = null;
         return true;
     }

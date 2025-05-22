@@ -8,49 +8,53 @@ namespace Lagrange.Core.Internal.Context.Uploader;
 [HighwayUploader(typeof(ImageEntity))]
 internal class ImageUploader : IHighwayUploader
 {
-    private const string Tag = nameof(ImageUploader);
-    
-    public async Task UploadPrivate(ContextCollection context, MessageChain chain, IMessageEntity entity)
+    public async Task UploadPrivate(ContextCollection context, string uid, IMessageEntity entity)
     {
-        if (entity is ImageEntity { ImageStream: not null } image)
+        if (entity is ImageEntity { ImageStream: { } stream } image)
         {
-            string uid = await context.Business.CachingLogic.ResolveUid(chain.GroupUin, chain.FriendUin) ?? 
-                         throw new Exception($"Failed to resolve Uid for Uin {chain.FriendUin}");
-            var @event = ImageUploadEvent.Create(image.ImageStream, uid);
-            var results = await context.Business.SendEvent(@event);
-            if (results.Count != 0)
-            {
-                var ticketResult = (ImageUploadEvent)results[0];
-                if (!ticketResult.IsExist)
-                {
-                    bool hwSuccess = await context.Highway.UploadSrcByStreamAsync(1, image.ImageStream, ticketResult.Ticket, @event.FileMd5.UnHex());
-                    if (!hwSuccess) throw new Exception();
-                }
+            var uploadEvent = ImageUploadEvent.Create(image, uid);
+            var uploadResult = await context.Business.SendEvent(uploadEvent);
+            var metaResult = (ImageUploadEvent)uploadResult[0];
 
-                image.ImageStream = @event.Stream;
-                image.Path = ticketResult.ServerPath;
+            if (Common.GenerateExt(metaResult) is { } ext)
+            {
+                var hash = metaResult.MsgInfo.MsgInfoBody[0].Index.Info.FileHash.UnHex();
+                bool hwSuccess = await context.Highway.UploadSrcByStreamAsync(1003, stream.Value, await Common.GetTicket(context), hash, ext.Serialize().ToArray());
+                if (!hwSuccess)
+                {
+                    await stream.Value.DisposeAsync();
+                    throw new Exception();
+                }
             }
+
+            image.MsgInfo = metaResult.MsgInfo;  // directly constructed by Tencent's BDH Server
+            image.CompatImage = metaResult.Compat;  // for legacy QQ
+            await image.ImageStream.Value.DisposeAsync();
         }
     }
 
-    public async Task UploadGroup(ContextCollection context, MessageChain chain, IMessageEntity entity)
+    public async Task UploadGroup(ContextCollection context, uint uin, IMessageEntity entity)
     {
-        if (entity is ImageEntity { ImageStream: not null } image)
+        if (entity is ImageEntity { ImageStream: { } stream } image)
         {
-            var @event = ImageGroupUploadEvent.Create(image.ImageStream, chain.GroupUin ?? throw new Exception());
-            var results = await context.Business.SendEvent(@event);
-            if (results.Count != 0)
-            {
-                var ticketResult = (ImageGroupUploadEvent)results[0];
-                if (!ticketResult.IsExist)
-                {
-                    bool hwSuccess = await context.Highway.UploadSrcByStreamAsync(2, image.ImageStream, ticketResult.Ticket, @event.FileMd5.UnHex());
-                    if (!hwSuccess) throw new Exception();
-                }
+            var uploadEvent = ImageGroupUploadEvent.Create(image, uin);
+            var uploadResult = await context.Business.SendEvent(uploadEvent);
+            var metaResult = (ImageGroupUploadEvent)uploadResult[0];
 
-                image.ImageStream = @event.Stream;
-                image.FileId = ticketResult.FileId;
+            if (Common.GenerateExt(metaResult) is { } ext)
+            {
+                var hash = metaResult.MsgInfo.MsgInfoBody[0].Index.Info.FileHash.UnHex();
+                bool hwSuccess = await context.Highway.UploadSrcByStreamAsync(1004, stream.Value, await Common.GetTicket(context), hash, ext.Serialize().ToArray());
+                if (!hwSuccess)
+                {
+                    await stream.Value.DisposeAsync();
+                    throw new Exception();
+                }
             }
+
+            image.MsgInfo = metaResult.MsgInfo;  // directly constructed by Tencent's BDH Server
+            image.CompatFace = metaResult.Compat;  // for legacy QQ
+            await image.ImageStream.Value.DisposeAsync();
         }
     }
 }

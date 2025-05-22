@@ -12,11 +12,20 @@ public interface IMessageEntity
     /// <returns></returns>
     internal IEnumerable<Elem> PackElement(); // abstract method
 
+    /// <summary>
+    /// <inheritdoc cref="PackElement" />
+    /// For <see cref="MessagePacker.BuildFake" />
+    /// </summary>
+    /// <returns></returns>
+    internal IEnumerable<Elem> PackFakeElement() => PackElement();
+
     internal object? PackMessageContent() => null; // virtual method
 
     internal IMessageEntity? UnpackElement(Elem elem); // abstract method
-    
+
     internal void SetSelfUid(string selfUid) { } // virtual method
 
     public string ToPreviewString(); // abstract method
+
+    public string ToPreviewText() => "[暂不支持该消息类型]"; // virtual method
 }

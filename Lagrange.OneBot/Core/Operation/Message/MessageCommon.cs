@@ -1,116 +1,164 @@
 using System.Reflection;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Lagrange.Core;
+using Lagrange.Core.Common.Entity;
 using Lagrange.Core.Message;
 using Lagrange.Core.Utility.Extension;
+using Lagrange.OneBot.Core.Entity;
 using Lagrange.OneBot.Core.Entity.Action;
 using Lagrange.OneBot.Core.Entity.Message;
-using Lagrange.OneBot.Core.Message;
+using Lagrange.OneBot.Core.Operation.Converters;
+using Lagrange.OneBot.Message;
+using Lagrange.OneBot.Utility;
+using Microsoft.Extensions.Logging;
+using JsonSerializer = System.Text.Json.JsonSerializer;
 
 namespace Lagrange.OneBot.Core.Operation.Message;
 
-public static partial class MessageCommon
+public partial class MessageCommon
 {
-    private static readonly Dictionary<string, ISegment> TypeToSegment;
+    private readonly ILogger<MessageCommon> _logger;
 
-    static MessageCommon()
+    private readonly Dictionary<string, SegmentBase> _typeToSegment;
+
+    public MessageCommon(RealmHelper realm, ILogger<MessageCommon> logger)
     {
-        TypeToSegment = new Dictionary<string, ISegment>();
+        _logger = logger;
+        _typeToSegment = new Dictionary<string, SegmentBase>();
 
         foreach (var type in Assembly.GetExecutingAssembly().GetTypes())
         {
-            var attribute = type.GetCustomAttribute<SegmentSubscriberAttribute>();
-            if (attribute != null) TypeToSegment[attribute.SendType] = (ISegment)type.CreateInstance(false);
+            if (type.GetCustomAttribute<SegmentSubscriberAttribute>() is { } attribute)
+            {
+                var instance = (SegmentBase)type.CreateInstance(false);
+                instance.Realm = realm;
+                _typeToSegment[attribute.SendType] = instance;
+            }
         }
     }
 
-    public static MessageBuilder ParseChain(OneBotMessage message)
+    public MessageBuilder ParseFakeChain(OneBotFakeNode message)
     {
-        var builder = message.MessageType == "private"
-            ? MessageBuilder.Friend(message.UserId ?? 0)
-            : MessageBuilder.Group(message.GroupId ?? 0);
-        BuildMessages(builder, message.Messages);
+        var builder = MessageBuilder.Friend(uint.Parse(message.Uin)).FriendName(message.Name);
+        BuildMessages(builder, message.Content, message.MessageStyle);
 
         return builder;
     }
 
-    public static MessageBuilder ParseChain(OneBotMessageSimple message)
+    public MessageBuilder ParseFakeChain(OneBotFakeNodeSimple message)
     {
-        var builder = message.MessageType == "private"
-            ? MessageBuilder.Friend(message.UserId ?? 0)
-            : MessageBuilder.Group(message.GroupId ?? 0);
-        BuildMessages(builder, message.Messages);
+        var builder = MessageBuilder.Friend(uint.Parse(message.Uin)).FriendName(message.Name);
+        BuildMessages(builder, message.Content, message.MessageStyle);
 
         return builder;
     }
 
-    public static MessageBuilder ParseChain(OneBotMessageText message)
+    public MessageBuilder ParseFakeChain(OneBotFakeNodeText message)
     {
-        var builder = message.MessageType == "private"
-            ? MessageBuilder.Friend(message.UserId ?? 0)
-            : MessageBuilder.Group(message.GroupId ?? 0);
-        builder.Text(message.Messages);
+        var builder = MessageBuilder.Friend(uint.Parse(message.Uin)).FriendName(message.Name);
+        BuildMessages(builder, message.Content, message.MessageStyle);
 
         return builder;
     }
 
-    public static MessageBuilder ParseChain(OneBotPrivateMessage message)
+    public MessageBuilder ParseChain(OneBotMessage message)
+    {
+        var builder = message.MessageType == "private" || message.GroupId == null
+            ? MessageBuilder.Friend(message.UserId ?? 0)
+            : MessageBuilder.Group(message.GroupId.Value);
+        BuildMessages(builder, message.Messages, message.MessageStyle);
+
+        return builder;
+    }
+
+    public MessageBuilder ParseChain(OneBotMessageSimple message)
+    {
+        var builder = message.MessageType == "private" || message.GroupId == null
+            ? MessageBuilder.Friend(message.UserId ?? 0)
+            : MessageBuilder.Group(message.GroupId.Value);
+        BuildMessages(builder, message.Messages, message.MessageStyle);
+
+        return builder;
+    }
+
+    public MessageBuilder ParseChain(OneBotMessageText message)
+    {
+        var builder = message.MessageType == "private" || message.GroupId == null
+            ? MessageBuilder.Friend(message.UserId ?? 0)
+            : MessageBuilder.Group(message.GroupId.Value);
+
+        if (message.AutoEscape == true)
+        {
+            builder.Text(message.Messages);
+            builder.Style(ConvertMessageStyle(message.MessageStyle));
+        }
+        else
+        {
+            BuildMessages(builder, message.Messages, message.MessageStyle);
+        }
+
+        return builder;
+    }
+
+    public MessageBuilder ParseChain(OneBotPrivateMessage message)
     {
         var builder = MessageBuilder.Friend(message.UserId);
-        BuildMessages(builder, message.Messages);
+        BuildMessages(builder, message.Messages, message.MessageStyle);
 
         return builder;
     }
 
-    public static MessageBuilder ParseChain(OneBotPrivateMessageSimple message)
+    public MessageBuilder ParseChain(OneBotPrivateMessageSimple message)
     {
         var builder = MessageBuilder.Friend(message.UserId);
-        BuildMessages(builder, message.Messages);
+        BuildMessages(builder, message.Messages, message.MessageStyle);
 
         return builder;
     }
 
-    public static MessageBuilder ParseChain(OneBotPrivateMessageText message)
+    public MessageBuilder ParseChain(OneBotPrivateMessageText message)
     {
         var builder = MessageBuilder.Friend(message.UserId);
+        if (message.AutoEscape == true)
+        {
+            builder.Text(message.Messages);
+            builder.Style(ConvertMessageStyle(message.MessageStyle));
+        }
+        else
+        {
+            BuildMessages(builder, message.Messages, message.MessageStyle);
+        }
+        return builder;
+    }
+
+
+    public MessageBuilder ParseChain(OneBotGroupMessage message)
+    {
+        var builder = MessageBuilder.Group(message.GroupId);
+        BuildMessages(builder, message.Messages, message.MessageStyle);
+
+        return builder;
+    }
+
+    public MessageBuilder ParseChain(OneBotGroupMessageSimple message)
+    {
+        var builder = MessageBuilder.Group(message.GroupId);
+        BuildMessages(builder, message.Messages, message.MessageStyle);
+
+        return builder;
+    }
+
+    public MessageBuilder ParseChain(OneBotGroupMessageText message)
+    {
+        var builder = MessageBuilder.Group(message.GroupId);
         if (message.AutoEscape == true)
         {
             builder.Text(message.Messages);
         }
         else
         {
-            BuildMessages(builder, message.Messages);
-        }
-        return builder;
-    }
-
-
-    public static MessageBuilder ParseChain(OneBotGroupMessage message)
-    {
-        var builder = MessageBuilder.Group(message.GroupId);
-        BuildMessages(builder, message.Messages);
-
-        return builder;
-    }
-
-    public static MessageBuilder ParseChain(OneBotGroupMessageSimple message)
-    {
-        var builder = MessageBuilder.Group(message.GroupId);
-        BuildMessages(builder, message.Messages);
-
-        return builder;
-    }
-
-    public static MessageBuilder ParseChain(OneBotGroupMessageText message)
-    {
-        var builder = MessageBuilder.Group(message.GroupId);
-        if (message.AutoEscape == true)
-        {
-            builder.Text(message.Messages);
-        }
-        else
-        {
-            BuildMessages(builder, message.Messages);
+            BuildMessages(builder, message.Messages, message.MessageStyle);
         }
         return builder;
     }
@@ -118,22 +166,16 @@ public static partial class MessageCommon
     [GeneratedRegex(@"\[CQ:([^,\]]+)(?:,([^,\]]+))*\]")]
     private static partial Regex CQCodeRegex();
 
-    private static string UnescapeCQ(string str)
-    {
-        return str.Replace("&#91;", "[")
-                  .Replace("&#93;", "]")
-                  .Replace("&#44;", ",")
-                  .Replace("&amp;", "&");
-    }
+    private static string UnescapeCQ(string str) => str.Replace("&#91;", "[")
+        .Replace("&#93;", "]")
+        .Replace("&#44;", ",")
+        .Replace("&amp;", "&");
 
-    private static string UnescapeText(string str)
-    {
-        return str.Replace("&#91;", "[")
-                  .Replace("&#93;", "]")
-                  .Replace("&amp;", "&");
-    }
+    private static string UnescapeText(string str) => str.Replace("&#91;", "[")
+        .Replace("&#93;", "]")
+        .Replace("&amp;", "&");
 
-    private static void BuildMessages(MessageBuilder builder, string message)
+    private void BuildMessages(MessageBuilder builder, string message, OnebotMessageStyle? messageStyle)
     {
         var matches = CQCodeRegex().Matches(message);
         int textStart = 0;
@@ -143,7 +185,7 @@ public static partial class MessageCommon
             textStart = match.Index + match.Length;
 
             string type = match.Groups[1].Value;
-            if (TypeToSegment.TryGetValue(type, out var instance))
+            if (_typeToSegment.TryGetValue(type, out var instance))
             {
                 var data = new Dictionary<string, string>();
                 foreach (var capture in match.Groups[2].Captures.Cast<Capture>())
@@ -151,32 +193,88 @@ public static partial class MessageCommon
                     var pair = capture.Value.Split('=', 2);
                     if (pair.Length == 2) data[pair[0]] = UnescapeCQ(pair[1]);
                 }
-                var cast = (ISegment)JsonSerializer.SerializeToElement(data).Deserialize(instance.GetType())!;
-                instance.Build(builder, cast);
+
+                if (JsonSerializer.SerializeToElement(data).Deserialize(instance.GetType(), SerializerOptions.DefaultOptions) is SegmentBase cast) instance.Build(builder, cast);
+                else Log.LogCQFailed(_logger, type, string.Empty);
             }
         }
 
         if (textStart < message.Length) builder.Text(UnescapeText(message[textStart..]));
+
+        builder.Style(ConvertMessageStyle(messageStyle));
     }
 
-    private static void BuildMessages(MessageBuilder builder, List<OneBotSegment> segments)
+    private void BuildMessages(MessageBuilder builder, List<OneBotSegment> segments, OnebotMessageStyle? messageStyle)
     {
         foreach (var segment in segments)
         {
-            if (TypeToSegment.TryGetValue(segment.Type, out var instance))
+            if (_typeToSegment.TryGetValue(segment.Type, out var instance))
             {
-                var cast = (ISegment)((JsonElement)segment.Data).Deserialize(instance.GetType())!;
-                instance.Build(builder, cast);
+                if (((JsonElement)segment.Data).Deserialize(instance.GetType(), SerializerOptions.DefaultOptions) is SegmentBase cast) instance.Build(builder, cast);
+                else Log.LogCQFailed(_logger, segment.Type, string.Empty);
             }
         }
+
+        builder.Style(ConvertMessageStyle(messageStyle));
     }
 
-    private static void BuildMessages(MessageBuilder builder, OneBotSegment segment)
+    private void BuildMessages(MessageBuilder builder, OneBotSegment segment, OnebotMessageStyle? messageStyle)
     {
-        if (TypeToSegment.TryGetValue(segment.Type, out var instance))
+        if (_typeToSegment.TryGetValue(segment.Type, out var instance))
         {
-            var cast = (ISegment)((JsonElement)segment.Data).Deserialize(instance.GetType())!;
-            instance.Build(builder, cast);
+            if (((JsonElement)segment.Data).Deserialize(instance.GetType(), SerializerOptions.DefaultOptions) is SegmentBase cast)
+            {
+                instance.Build(builder, cast);
+            }
+            else
+            {
+                Log.LogCQFailed(_logger, segment.Type, string.Empty);
+            }
         }
+
+        builder.Style(ConvertMessageStyle(messageStyle));
+    }
+
+    public List<MessageChain> BuildForwardChains(BotContext context, OneBotForward forward)
+    {
+        List<MessageChain> chains = [];
+
+        foreach (var segment in forward.Messages)
+        {
+            if (((JsonElement)segment.Data).Deserialize<OneBotFakeNodeBase>(SerializerOptions.DefaultOptions) is { } element)
+            {
+                var chain = element switch
+                {
+                    OneBotFakeNode message => ParseFakeChain(message).Build(),
+                    OneBotFakeNodeSimple messageSimple => ParseFakeChain(messageSimple).Build(),
+                    OneBotFakeNodeText messageText => ParseFakeChain(messageText).Build(),
+                    _ => throw new Exception()
+                };
+                chains.Add(chain);  // as fake is constructed, use uid from bot itself to upload image
+            }
+        }
+
+        return chains;
+    }
+
+    private static MessageStyle? ConvertMessageStyle(OnebotMessageStyle? style)
+    {
+        return style == null
+            ? null
+            : new MessageStyle
+            {
+                BubbleId = style.BubbleId,
+                PendantId = style.PendantId,
+                FontId = style.FontId,
+                FontEffectId = style.FontEffectId,
+                IsCsFontEffectEnabled = style.IsCsFontEffectEnabled,
+                BubbleDiyTextId = style.BubbleDiyTextId
+            };
+    }
+
+    private static partial class Log
+    {
+        [LoggerMessage(EventId = 1, Level = LogLevel.Warning, Message = "Segment {type} Deserialization failed for code {code}")]
+        public static partial void LogCQFailed(ILogger logger, string type, string code);
     }
 }

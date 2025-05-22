@@ -3,7 +3,6 @@ using Lagrange.Core.Internal.Event;
 using Lagrange.Core.Internal.Event.Message;
 using Lagrange.Core.Internal.Packets.Action;
 using Lagrange.Core.Message;
-using Lagrange.Core.Utility.Binary;
 using Lagrange.Core.Utility.Extension;
 using ProtoBuf;
 
@@ -13,8 +12,8 @@ namespace Lagrange.Core.Internal.Service.Message;
 [Service("MessageSvc.PbSendMsg")]
 internal class SendMessageService : BaseService<SendMessageEvent>
 {
-    protected override bool Build(SendMessageEvent input, BotKeystore keystore, BotAppInfo appInfo, BotDeviceInfo device,
-        out BinaryPacket output, out List<BinaryPacket>? extraPackets)
+    protected override bool Build(SendMessageEvent input, BotKeystore keystore, BotAppInfo appInfo,
+        BotDeviceInfo device, out Span<byte> output, out List<Memory<byte>>? extraPackets)
     {
         var packet = MessagePacker.Build(input.Chain, keystore.Uid ?? throw new Exception("No UID found in keystore"));
 
@@ -23,10 +22,10 @@ internal class SendMessageService : BaseService<SendMessageEvent>
         return true;
     }
 
-    protected override bool Parse(byte[] input, BotKeystore keystore, BotAppInfo appInfo, BotDeviceInfo device,
+    protected override bool Parse(Span<byte> input, BotKeystore keystore, BotAppInfo appInfo, BotDeviceInfo device,
         out SendMessageEvent output, out List<ProtocolEvent>? extraEvents)
     {
-        var response = Serializer.Deserialize<SendMessageResponse>(input.AsSpan());
+        var response = Serializer.Deserialize<SendMessageResponse>(input);
         var result = new MessageResult
         {
             Result = (uint)response.Result,

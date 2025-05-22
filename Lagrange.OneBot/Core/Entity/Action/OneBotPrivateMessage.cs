@@ -10,21 +10,23 @@ public class OneBotPrivateMessageBase
     [JsonPropertyName("user_id")] public uint UserId { get; set; }
     
     [JsonPropertyName("auto_escape")] public bool? AutoEscape { get; set; }
+
+    [JsonPropertyName("message_style")] public OnebotMessageStyle? MessageStyle { get; set; }
 }
 
-// ReSharper disable once ClassNeverInstantiated.Global
+[Serializable]
 public class OneBotPrivateMessage : OneBotPrivateMessageBase
 {
     [JsonPropertyName("message")] public List<OneBotSegment> Messages { get; set; } = new();
 }
 
-// ReSharper disable once ClassNeverInstantiated.Global
+[Serializable]
 public class OneBotPrivateMessageSimple : OneBotPrivateMessageBase
 {
     [JsonPropertyName("message")] public OneBotSegment Messages { get; set; } = new();
 }
 
-// ReSharper disable once ClassNeverInstantiated.Global
+[Serializable]
 public class OneBotPrivateMessageText : OneBotPrivateMessageBase
 {
     [JsonPropertyName("message")] public string Messages { get; set; } = "";

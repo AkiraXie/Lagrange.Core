@@ -1,11 +1,10 @@
-using System.IO.Compression;
 using System.Text;
 
 namespace Lagrange.Core.Utility.Binary.Compression;
 
 internal static class ZCompression
 {
-    public static byte[] ZCompress(byte[] data, byte[]? header = null)
+    public static byte[] ZCompress(ReadOnlySpan<byte> data, ReadOnlySpan<byte> header = default)
     {
         using var stream = new MemoryStream();
         var deflate = Common.Deflate(data);
@@ -14,25 +13,26 @@ internal static class ZCompression
         stream.WriteByte(0x78); // Zlib header
         stream.WriteByte(0xDA); // Zlib header
 
-        stream.Write(deflate.AsSpan());
+        stream.Write(deflate);
         
         var checksum = Adler32(data);
-        stream.Write(checksum.AsSpan());
+        stream.Write(checksum);
         
         return stream.ToArray();
     }
     
-    public static byte[] ZCompress(string data, byte[]? header = null) => ZCompress(Encoding.UTF8.GetBytes(data), header);
+    public static byte[] ZCompress(string data, ReadOnlySpan<byte> header = default) => ZCompress(Encoding.UTF8.GetBytes(data), header);
 
-    public static byte[] ZDecompress(byte[] data)
+    public static byte[] ZDecompress(ReadOnlySpan<byte> data, bool validate = true)
     {
         var checksum = data[^4..];
         
         var inflate = Common.Inflate(data[2..^4]);
-        return checksum.SequenceEqual(Adler32(inflate)) ? inflate : throw new Exception("Checksum mismatch");
+        if (validate) return checksum.SequenceEqual(Adler32(inflate)) ? inflate : throw new Exception("Checksum mismatch");
+        return inflate;
     }
         
-    private static byte[] Adler32(byte[] data)
+    private static byte[] Adler32(ReadOnlySpan<byte> data)
     {
         uint a = 1, b = 0;
         foreach (byte t in data)
